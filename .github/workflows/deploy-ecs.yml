@@ -15,6 +15,14 @@ on:
         description: "Image tag to roll to (defaults to latest)"
         required: false
         default: "latest"
+      health_endpoints:
+        description: "Comma-separated health endpoints (optional; falls back to secret HEALTH_ENDPOINTS)"
+        required: false
+        default: ""
+  workflow_run:
+    workflows: ["build-and-push-ecr"]
+    types:
+      - completed
 
 concurrency: ecs-deploy-${{ github.ref }}
 
@@ -25,6 +33,10 @@ env:
   WORKER_SERVICE_NAME: "igor-home-task-prod-worker-service"
   WAIT_FOR_STABLE: "false"
   HEALTH_TIMEOUT: "360"  # seconds
+  HEALTH_PER_REQUEST_TIMEOUT: "10"
+  HEALTH_MIN_SUCCESS: "2"
+  HEALTH_ENDPOINTS: ${{ inputs.health_endpoints != '' && inputs.health_endpoints || secrets.HEALTH_ENDPOINTS }}
+  IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
 
 permissions:
   id-token: write
@@ -32,6 +44,7 @@ permissions:
 
 jobs:
   deploy:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -43,6 +56,10 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Show image tag to deploy
+        run: |
+          echo "Using image tag: ${IMAGE_TAG}"
 
       - name: Capture current task definitions
         run: |
@@ -56,26 +73,60 @@ jobs:
             echo "OLD_WORKER_TASKDEF=$WORKER_TD" >> $GITHUB_ENV
           fi
 
+      - name: Register task definitions with image tag
+        run: |
+          set -euo pipefail
+
+          register_with_tag () {
+            local td_arn="$1"
+            local out_var="$2"
+            echo "Registering new task definition from ${td_arn} with tag ${IMAGE_TAG}"
+            tmp=$(mktemp)
+            aws ecs describe-task-definition --task-definition "$td_arn" --query 'taskDefinition' --output json > "$tmp"
+            # update image tags and strip read-only fields
+            jq --arg tag "${IMAGE_TAG}" '
+              del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .compatibilities, .registeredAt, .registeredBy) |
+              .containerDefinitions |= (map(.image |= (. | split(":")[0] + ":" + $tag)))
+            ' "$tmp" > "${tmp}.out"
+            NEW_TD_ARN=$(aws ecs register-task-definition --cli-input-json file://${tmp}.out --query taskDefinition.taskDefinitionArn --output text)
+            echo "${out_var}=${NEW_TD_ARN}" >> $GITHUB_ENV
+            rm -f "$tmp" "${tmp}.out"
+          }
+
+          if [ -n "${OLD_API_TASKDEF:-}" ]; then
+            register_with_tag "${OLD_API_TASKDEF}" "NEW_API_TASKDEF"
+          fi
+          if [ -n "${OLD_WORKER_TASKDEF:-}" ]; then
+            register_with_tag "${OLD_WORKER_TASKDEF}" "NEW_WORKER_TASKDEF"
+          fi
+
       - name: Deploy selected services
         run: |
           set -euo pipefail
           deploy() {
             local svc="$1"
+            local td_env="$2"
+            local td="${!td_env:-}"
+            if [ -z "$td" ]; then
+              echo "No task definition ARN found for ${svc}, skipping"
+              return
+            fi
             echo "Forcing new deployment for ${svc}..."
             aws ecs update-service \
               --cluster "${CLUSTER_NAME}" \
               --service "${svc}" \
+              --task-definition "${td}" \
               --force-new-deployment
           }
 
           if [ "${{ inputs.deploy_api }}" = "true" ]; then
-            deploy "${API_SERVICE_NAME}"
+            deploy "${API_SERVICE_NAME}" "NEW_API_TASKDEF"
           else
             echo "Skipping API service (deploy_api=false)"
           fi
 
           if [ "${{ inputs.deploy_worker }}" = "true" ]; then
-            deploy "${WORKER_SERVICE_NAME}"
+            deploy "${WORKER_SERVICE_NAME}" "NEW_WORKER_TASKDEF"
           else
             echo "Skipping Worker service (deploy_worker=false)"
           fi
@@ -94,21 +145,7 @@ jobs:
         continue-on-error: true
         run: |
           set -euo pipefail
-          services=()
-          if [ "${{ inputs.deploy_api }}" = "true" ]; then
-            services+=("${API_SERVICE_NAME}")
-          fi
-          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
-            services+=("${WORKER_SERVICE_NAME}")
-          fi
-          if [ ${#services[@]} -eq 0 ]; then
-            echo "No services selected for deploy; skipping health check."
-            exit 0
-          fi
-          export AWS_REGION="${AWS_REGION}"
-          export CLUSTER_NAME="${CLUSTER_NAME}"
-          export SERVICES=$(IFS=, ; echo "${services[*]}")
-          python .github/scripts/ecs_health_check.py
+          python .github/scripts/http_health_check.py
 
       - name: Roll back on failed health
         if: ${{ steps.health.outcome == 'failure' }}
