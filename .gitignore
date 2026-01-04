@@ -1,0 +1,13 @@
+*.MD
+*.txt
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.env
+.env.*
+venv/
+.venv/
+uploads/
+health/
+.DS_Store

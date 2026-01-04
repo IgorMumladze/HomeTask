@@ -1,0 +1,63 @@
+services:
+  email-api:
+    build:
+      context: ./service-1-api
+      dockerfile: Dockerfile
+    container_name: email-api
+    ports:
+      - "5000:5000"
+    environment:
+      - API_TOKEN=test_secret_token_12345
+      - API_PORT=5000
+      - FLASK_ENV=development
+      - LOG_LEVEL=INFO
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - AWS_SESSION_TOKEN=local
+      - AWS_DEFAULT_REGION=us-east-1
+      - USE_MOCK_SQS=true
+      - SQS_QUEUE_URL=http://localhost:9324/queue/email-processing-queue
+
+    volumes:
+      - ./service-1-api:/app
+    networks:
+      - email-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  email-worker:
+    build:
+      context: ./service-2-worker
+      dockerfile: Dockerfile
+    container_name: email-worker
+    environment:
+      - POLL_INTERVAL_SECONDS=10
+      - LOG_LEVEL=INFO
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - AWS_SESSION_TOKEN=local
+      - AWS_DEFAULT_REGION=us-east-1
+      - USE_MOCK_S3=true
+      - USE_MOCK_SQS=true
+      - SQS_ENDPOINT_URL=http://localhost:9324
+      - SQS_QUEUE_URL=http://localhost:9324/queue/email-processing-queue
+      - S3_BUCKET_NAME=email-data-bucket
+    volumes:
+      - ./uploads:/app/uploads
+      - ./health:/app/health
+      - ./service-2-worker:/app
+    networks:
+      - email-network
+    restart: unless-stopped
+
+networks:
+  email-network:
+    driver: bridge
+
