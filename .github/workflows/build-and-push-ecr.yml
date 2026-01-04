@@ -35,9 +35,16 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Set up Buildx (container driver)
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
       - name: Build and push API image
         uses: docker/build-push-action@v5
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ./service-1-api
           platforms: linux/amd64
           push: true
@@ -50,6 +57,7 @@ jobs:
       - name: Build and push Worker image
         uses: docker/build-push-action@v5
         with:
+          builder: ${{ steps.buildx.outputs.name }}
           context: ./service-2-worker
           platforms: linux/amd64
           push: true
