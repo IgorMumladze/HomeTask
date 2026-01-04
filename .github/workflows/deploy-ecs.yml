@@ -37,6 +37,8 @@ env:
   HEALTH_MIN_SUCCESS: "2"
   HEALTH_ENDPOINTS: ${{ inputs.health_endpoints != '' && inputs.health_endpoints || secrets.HEALTH_ENDPOINTS }}
   IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag }}
+  DEPLOY_API: ${{ github.event_name == 'workflow_run' && 'true' || inputs.deploy_api }}
+  DEPLOY_WORKER: ${{ github.event_name == 'workflow_run' && 'true' || inputs.deploy_worker }}
 
 permissions:
   id-token: write
@@ -64,11 +66,11 @@ jobs:
       - name: Capture current task definitions
         run: |
           set -euo pipefail
-          if [ "${{ inputs.deploy_api }}" = "true" ]; then
+          if [ "${DEPLOY_API}" = "true" ]; then
             API_TD=$(aws ecs describe-services --cluster "${CLUSTER_NAME}" --services "${API_SERVICE_NAME}" --query "services[0].taskDefinition" --output text)
             echo "OLD_API_TASKDEF=$API_TD" >> $GITHUB_ENV
           fi
-          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
+          if [ "${DEPLOY_WORKER}" = "true" ]; then
             WORKER_TD=$(aws ecs describe-services --cluster "${CLUSTER_NAME}" --services "${WORKER_SERVICE_NAME}" --query "services[0].taskDefinition" --output text)
             echo "OLD_WORKER_TASKDEF=$WORKER_TD" >> $GITHUB_ENV
           fi
@@ -119,13 +121,13 @@ jobs:
               --force-new-deployment
           }
 
-          if [ "${{ inputs.deploy_api }}" = "true" ]; then
+          if [ "${DEPLOY_API}" = "true" ]; then
             deploy "${API_SERVICE_NAME}" "NEW_API_TASKDEF"
           else
             echo "Skipping API service (deploy_api=false)"
           fi
 
-          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
+          if [ "${DEPLOY_WORKER}" = "true" ]; then
             deploy "${WORKER_SERVICE_NAME}" "NEW_WORKER_TASKDEF"
           else
             echo "Skipping Worker service (deploy_worker=false)"
