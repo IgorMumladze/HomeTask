@@ -1,0 +1,50 @@
+name: deploy-ecs
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (defaults to latest)"
+        required: false
+        default: "latest"
+
+env:
+  AWS_REGION: us-west-1
+  CLUSTER_NAME: "igor-home-task-prod" # update if your ECS cluster name differs
+  API_SERVICE_NAME: "igor-home-task-prod-api-service"
+  WORKER_SERVICE_NAME: "igor-home-task-prod-worker-service"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force new deployment for API
+        run: |
+          aws ecs update-service \
+            --cluster "${CLUSTER_NAME}" \
+            --service "${API_SERVICE_NAME}" \
+            --force-new-deployment
+
+      - name: Force new deployment for Worker
+        run: |
+          aws ecs update-service \
+            --cluster "${CLUSTER_NAME}" \
+            --service "${WORKER_SERVICE_NAME}" \
+            --force-new-deployment
+
+      - name: Wait for services to stabilize
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${CLUSTER_NAME}" \
+            --services "${API_SERVICE_NAME}" "${WORKER_SERVICE_NAME}"
+

@@ -11,4 +11,10 @@ venv/
 uploads/
 health/
 .DS_Store
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+**/terraform.tfstate
+**/terraform.tfstate.backup
+*.tfvars
 docker-compose.yml
