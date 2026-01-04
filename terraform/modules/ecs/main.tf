@@ -1,5 +1,8 @@
 locals {
-  base_name = var.name_suffix == "" ? "${var.project_name}-${var.environment}" : "${var.project_name}-${var.environment}-${var.name_suffix}"
+  service_base_name = var.name_suffix == "" ? "${var.project_name}-${var.environment}" : "${var.project_name}-${var.environment}-${var.name_suffix}"
+  cluster_base_name = var.cluster_name_override != "" ? var.cluster_name_override : "${var.project_name}-${var.environment}"
+  # base_name kept for backward references (logs, task family)
+  base_name         = var.name_suffix == "" ? "${var.project_name}-${var.environment}" : "${var.project_name}-${var.environment}-${var.name_suffix}"
   common_tags = merge(var.tags, {
     Project     = var.project_name
     Environment = var.environment
@@ -16,7 +19,9 @@ resource "aws_cloudwatch_log_group" "this" {
 }
 
 resource "aws_ecs_cluster" "this" {
-  name = "${local.base_name}-cluster"
+  count = var.create_cluster ? 1 : 0
+
+  name = "${local.cluster_base_name}-cluster"
 
   setting {
     name  = "containerInsights"
@@ -24,12 +29,14 @@ resource "aws_ecs_cluster" "this" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${local.base_name}-cluster"
+    Name = "${local.cluster_base_name}-cluster"
   })
 }
 
 resource "aws_ecs_cluster_capacity_providers" "this" {
-  cluster_name = aws_ecs_cluster.this.name
+  count = var.create_cluster ? 1 : 0
+
+  cluster_name = aws_ecs_cluster.this[0].name
   capacity_providers = [
     "FARGATE",
     "FARGATE_SPOT"
@@ -40,6 +47,11 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
     weight            = 1
     base              = 1
   }
+}
+
+locals {
+  cluster_name = var.create_cluster ? aws_ecs_cluster.this[0].name : var.existing_cluster_name
+  cluster_arn  = var.create_cluster ? aws_ecs_cluster.this[0].arn : var.existing_cluster_arn
 }
 
 resource "aws_ecs_task_definition" "this" {
@@ -92,8 +104,8 @@ resource "aws_ecs_task_definition" "this" {
 }
 
 resource "aws_ecs_service" "this" {
-  name            = "${local.base_name}-service"
-  cluster         = aws_ecs_cluster.this.id
+  name            = "${local.service_base_name}-service"
+  cluster         = local.cluster_arn != "" ? local.cluster_arn : local.cluster_name
   task_definition = aws_ecs_task_definition.this.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
@@ -128,7 +140,7 @@ resource "aws_ecs_service" "this" {
 resource "aws_appautoscaling_target" "ecs" {
   max_capacity       = var.max_capacity
   min_capacity       = var.min_capacity
-  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this.name}"
+  resource_id        = "service/${local.cluster_name}/${aws_ecs_service.this.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

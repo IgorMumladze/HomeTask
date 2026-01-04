@@ -3,6 +3,10 @@ module "ecs_api" {
   project_name               = var.project_name
   environment                = var.environment
   name_suffix                = "api"
+  cluster_name_override      = "${var.project_name}-${var.environment}"
+  create_cluster             = true
+  existing_cluster_name      = ""
+  existing_cluster_arn       = ""
   aws_region                 = var.aws_region
   container_name             = local.api_container_name
   container_image            = local.api_image_uri
@@ -31,6 +35,10 @@ module "ecs_worker" {
   project_name               = var.project_name
   environment                = var.environment
   name_suffix                = "worker"
+  cluster_name_override      = "${var.project_name}-${var.environment}"
+  create_cluster             = false
+  existing_cluster_name      = module.ecs_api.cluster_name
+  existing_cluster_arn       = module.ecs_api.cluster_arn
   aws_region                 = var.aws_region
   container_name             = local.worker_container_name
   container_image            = local.worker_image_uri

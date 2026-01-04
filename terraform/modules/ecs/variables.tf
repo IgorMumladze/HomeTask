@@ -8,6 +8,30 @@ variable "environment" {
   type        = string
 }
 
+variable "create_cluster" {
+  description = "Whether to create a new ECS cluster"
+  type        = bool
+  default     = true
+}
+
+variable "existing_cluster_name" {
+  description = "Existing ECS cluster name (required if create_cluster = false)"
+  type        = string
+  default     = ""
+}
+
+variable "existing_cluster_arn" {
+  description = "Existing ECS cluster ARN (optional if create_cluster = false)"
+  type        = string
+  default     = ""
+}
+
+variable "cluster_name_override" {
+  description = "Override cluster base name (without -cluster). Leave empty to use project-environment."
+  type        = string
+  default     = ""
+}
+
 variable "name_suffix" {
   description = "Optional suffix to make ECS resources unique (e.g., api, worker)"
   type        = string

@@ -9,8 +9,8 @@ on:
         default: "latest"
 
 env:
-  AWS_REGION: us-west-1
-  CLUSTER_NAME: "igor-home-task-prod" # update if your ECS cluster name differs
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  CLUSTER_NAME: "igor-home-task-prod-cluster"
   API_SERVICE_NAME: "igor-home-task-prod-api-service"
   WORKER_SERVICE_NAME: "igor-home-task-prod-worker-service"
 
