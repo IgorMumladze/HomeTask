@@ -1,0 +1,57 @@
+module "ecs_api" {
+  source                     = "../modules/ecs"
+  project_name               = var.project_name
+  environment                = var.environment
+  name_suffix                = "api"
+  aws_region                 = var.aws_region
+  container_name             = local.api_container_name
+  container_image            = local.api_image_uri
+  container_port             = var.api_container_port
+  task_cpu                   = var.api_ecs_task_cpu
+  task_memory                = var.api_ecs_task_memory
+  desired_count              = var.api_ecs_desired_count
+  min_capacity               = var.api_ecs_min_capacity
+  max_capacity               = var.api_ecs_max_capacity
+  cpu_target_value           = var.api_ecs_cpu_target_value
+  memory_target_value        = var.api_ecs_memory_target_value
+  private_subnet_ids         = module.networking.private_subnet_ids
+  security_group_id          = module.networking.ecs_security_group_id
+  target_group_arn           = aws_lb_target_group.this.arn
+  log_retention_days         = var.api_log_retention_days
+  container_insights_enabled = var.api_container_insights_enabled
+  environment_variables      = local.merged_env_vars
+  secrets                    = local.merged_secret_vars
+  ecs_execution_role_arn     = module.security.ecs_execution_role_arn
+  ecs_task_role_arn          = module.security.ecs_task_role_arn
+  tags                       = var.tags
+}
+
+module "ecs_worker" {
+  source                     = "../modules/ecs"
+  project_name               = var.project_name
+  environment                = var.environment
+  name_suffix                = "worker"
+  aws_region                 = var.aws_region
+  container_name             = local.worker_container_name
+  container_image            = local.worker_image_uri
+  container_port             = var.worker_container_port
+  task_cpu                   = var.worker_ecs_task_cpu
+  task_memory                = var.worker_ecs_task_memory
+  desired_count              = var.worker_ecs_desired_count
+  min_capacity               = var.worker_ecs_min_capacity
+  max_capacity               = var.worker_ecs_max_capacity
+  cpu_target_value           = var.worker_ecs_cpu_target_value
+  memory_target_value        = var.worker_ecs_memory_target_value
+  private_subnet_ids         = module.networking.private_subnet_ids
+  security_group_id          = module.networking.ecs_security_group_id
+  attach_to_alb              = false
+  target_group_arn           = ""
+  log_retention_days         = var.worker_log_retention_days
+  container_insights_enabled = var.worker_container_insights_enabled
+  environment_variables      = local.merged_env_vars
+  secrets                    = local.merged_secret_vars
+  ecs_execution_role_arn     = module.security.ecs_execution_role_arn
+  ecs_task_role_arn          = module.security.ecs_task_role_arn
+  tags                       = var.tags
+}
+

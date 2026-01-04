@@ -11,3 +11,4 @@ venv/
 uploads/
 health/
 .DS_Store
+docker-compose.yml
