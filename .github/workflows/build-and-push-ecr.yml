@@ -6,10 +6,10 @@ on:
   workflow_dispatch: {}
 
 env:
-  AWS_REGION: us-west-1
-  AWS_ACCOUNT_ID: "371670420772"
-  ECR_API_REPO: "igor-home-task-prod-api"
-  ECR_WORKER_REPO: "igor-home-task-prod-worker"
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_API_REPO: ${{ secrets.ECR_API_REPO }}
+  ECR_WORKER_REPO: ${{ secrets.ECR_WORKER_REPO }}
   IMAGE_TAG: ${{ github.sha }}
   DOCKER_BUILDKIT: "1"
 
@@ -24,10 +24,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials (static)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
