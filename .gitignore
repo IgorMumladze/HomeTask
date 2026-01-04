@@ -1,5 +1,7 @@
 *.MD
 *.txt
+!service-1-api/requirements.txt
+!service-2-worker/requirements.txt
 __pycache__/
 *.pyc
 .pytest_cache/
