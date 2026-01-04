@@ -23,7 +23,7 @@ module "ecs_api" {
   target_group_arn           = aws_lb_target_group.this.arn
   log_retention_days         = var.api_log_retention_days
   container_insights_enabled = var.api_container_insights_enabled
-  environment_variables      = local.merged_env_vars
+  environment_variables      = local.combined_env_vars
   secrets                    = local.merged_secret_vars
   ecs_execution_role_arn     = module.security.ecs_execution_role_arn
   ecs_task_role_arn          = module.security.ecs_task_role_arn
@@ -56,7 +56,7 @@ module "ecs_worker" {
   target_group_arn           = ""
   log_retention_days         = var.worker_log_retention_days
   container_insights_enabled = var.worker_container_insights_enabled
-  environment_variables      = local.merged_env_vars
+  environment_variables      = local.combined_env_vars
   secrets                    = local.merged_secret_vars
   ecs_execution_role_arn     = module.security.ecs_execution_role_arn
   ecs_task_role_arn          = module.security.ecs_task_role_arn

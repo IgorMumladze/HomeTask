@@ -3,16 +3,28 @@ name: deploy-ecs
 on:
   workflow_dispatch:
     inputs:
+      deploy_api:
+        description: "Deploy API service"
+        type: boolean
+        default: true
+      deploy_worker:
+        description: "Deploy worker service"
+        type: boolean
+        default: true
       image_tag:
-        description: "Image tag to deploy (defaults to latest)"
+        description: "Image tag to roll to (defaults to latest)"
         required: false
         default: "latest"
+
+concurrency: ecs-deploy-${{ github.ref }}
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION }}
   CLUSTER_NAME: "igor-home-task-prod-cluster"
   API_SERVICE_NAME: "igor-home-task-prod-api-service"
   WORKER_SERVICE_NAME: "igor-home-task-prod-worker-service"
+  WAIT_FOR_STABLE: "false"
+  HEALTH_TIMEOUT: "360"  # seconds
 
 permissions:
   id-token: write
@@ -22,6 +34,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials (static)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -29,23 +44,91 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Force new deployment for API
+      - name: Capture current task definitions
         run: |
-          aws ecs update-service \
-            --cluster "${CLUSTER_NAME}" \
-            --service "${API_SERVICE_NAME}" \
-            --force-new-deployment
+          set -euo pipefail
+          if [ "${{ inputs.deploy_api }}" = "true" ]; then
+            API_TD=$(aws ecs describe-services --cluster "${CLUSTER_NAME}" --services "${API_SERVICE_NAME}" --query "services[0].taskDefinition" --output text)
+            echo "OLD_API_TASKDEF=$API_TD" >> $GITHUB_ENV
+          fi
+          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
+            WORKER_TD=$(aws ecs describe-services --cluster "${CLUSTER_NAME}" --services "${WORKER_SERVICE_NAME}" --query "services[0].taskDefinition" --output text)
+            echo "OLD_WORKER_TASKDEF=$WORKER_TD" >> $GITHUB_ENV
+          fi
 
-      - name: Force new deployment for Worker
+      - name: Deploy selected services
         run: |
-          aws ecs update-service \
-            --cluster "${CLUSTER_NAME}" \
-            --service "${WORKER_SERVICE_NAME}" \
-            --force-new-deployment
+          set -euo pipefail
+          deploy() {
+            local svc="$1"
+            echo "Forcing new deployment for ${svc}..."
+            aws ecs update-service \
+              --cluster "${CLUSTER_NAME}" \
+              --service "${svc}" \
+              --force-new-deployment
+          }
 
-      - name: Wait for services to stabilize
+          if [ "${{ inputs.deploy_api }}" = "true" ]; then
+            deploy "${API_SERVICE_NAME}"
+          else
+            echo "Skipping API service (deploy_api=false)"
+          fi
+
+          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
+            deploy "${WORKER_SERVICE_NAME}"
+          else
+            echo "Skipping Worker service (deploy_worker=false)"
+          fi
+
+          if [ "${WAIT_FOR_STABLE}" = "true" ]; then
+            echo "Waiting for services to stabilize..."
+            aws ecs wait services-stable \
+              --cluster "${CLUSTER_NAME}" \
+              --services "${API_SERVICE_NAME}" "${WORKER_SERVICE_NAME}"
+          else
+            echo "Skipping wait (WAIT_FOR_STABLE=${WAIT_FOR_STABLE})"
+          fi
+
+      - name: Service health check
+        id: health
+        continue-on-error: true
         run: |
+          set -euo pipefail
+          services=()
+          if [ "${{ inputs.deploy_api }}" = "true" ]; then
+            services+=("${API_SERVICE_NAME}")
+          fi
+          if [ "${{ inputs.deploy_worker }}" = "true" ]; then
+            services+=("${WORKER_SERVICE_NAME}")
+          fi
+          if [ ${#services[@]} -eq 0 ]; then
+            echo "No services selected for deploy; skipping health check."
+            exit 0
+          fi
+          export AWS_REGION="${AWS_REGION}"
+          export CLUSTER_NAME="${CLUSTER_NAME}"
+          export SERVICES=$(IFS=, ; echo "${services[*]}")
+          python .github/scripts/ecs_health_check.py
+
+      - name: Roll back on failed health
+        if: ${{ steps.health.outcome == 'failure' }}
+        run: |
+          set -euo pipefail
+          echo "Health check failed, rolling back to previous task definitions..."
+          if [ -n "${OLD_API_TASKDEF:-}" ]; then
+            aws ecs update-service \
+              --cluster "${CLUSTER_NAME}" \
+              --service "${API_SERVICE_NAME}" \
+              --task-definition "${OLD_API_TASKDEF}"
+          fi
+          if [ -n "${OLD_WORKER_TASKDEF:-}" ]; then
+            aws ecs update-service \
+              --cluster "${CLUSTER_NAME}" \
+              --service "${WORKER_SERVICE_NAME}" \
+              --task-definition "${OLD_WORKER_TASKDEF}"
+          fi
+          echo "Waiting for rollback to stabilize..."
           aws ecs wait services-stable \
             --cluster "${CLUSTER_NAME}" \
             --services "${API_SERVICE_NAME}" "${WORKER_SERVICE_NAME}"
-
+          exit 1  # fail the job to signal rollback happened

@@ -126,10 +126,6 @@ resource "aws_ecs_service" "this" {
     }
   }
 
-  lifecycle {
-    ignore_changes = [task_definition]
-  }
-
   tags = merge(local.common_tags, {
     Name = "${local.base_name}-service"
   })

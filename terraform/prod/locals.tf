@@ -28,5 +28,14 @@ locals {
 
   api_image_uri    = "${local.api_repo_url}:${var.api_image_tag}"
   worker_image_uri = "${local.worker_repo_url}:${var.worker_image_tag}"
+
+  combined_env_vars = merge(
+    local.merged_env_vars,
+    {
+      AWS_REGION    = var.aws_region
+      USE_MOCK_SQS  = "false"
+      SQS_QUEUE_URL = module.queue.queue_url
+    }
+  )
 }
 
