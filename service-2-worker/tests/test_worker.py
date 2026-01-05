@@ -23,7 +23,7 @@ def temp_cwd(tmp_path):
 
 
 def test_mock_upload_creates_file(temp_cwd):
-    uploader = S3Uploader()
+    uploader = S3Uploader(settings)
     message_id = "msg_test"
     now = datetime.utcnow()
     payload = {"message_id": message_id, "timestamp": now.isoformat() + "Z", "data": {"email_subject": "Hello"}}
