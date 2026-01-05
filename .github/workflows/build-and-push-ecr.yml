@@ -104,7 +104,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "$CLOUDWATCH_NAMESPACE" \
             --metric-data \
-              MetricName=BuildSuccess,Dimensions=Workflow=build-and-push-ecr,Status=success,Value=1,Unit=Count
+              MetricName=BuildSuccess,Dimensions=[{Name=Workflow,Value=build-and-push-ecr}],Value=1,Unit=Count
 
       - name: Publish build failure metric
         if: failure()
@@ -112,5 +112,5 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "$CLOUDWATCH_NAMESPACE" \
             --metric-data \
-              MetricName=BuildFailure,Dimensions=Workflow=build-and-push-ecr,Status=failure,Value=1,Unit=Count
+              MetricName=BuildFailure,Dimensions=[{Name=Workflow,Value=build-and-push-ecr}],Value=1,Unit=Count
 

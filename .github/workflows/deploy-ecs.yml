@@ -180,7 +180,7 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "$CLOUDWATCH_NAMESPACE" \
             --metric-data \
-              MetricName=DeploySuccess,Dimensions=Workflow=deploy-ecs,Status=success,Value=1,Unit=Count
+              MetricName=DeploySuccess,Dimensions=[{Name=Workflow,Value=deploy-ecs}],Value=1,Unit=Count
 
       - name: Publish deploy failure metric
         if: failure()
@@ -188,4 +188,4 @@ jobs:
           aws cloudwatch put-metric-data \
             --namespace "$CLOUDWATCH_NAMESPACE" \
             --metric-data \
-              MetricName=DeployFailure,Dimensions=Workflow=deploy-ecs,Status=failure,Value=1,Unit=Count
+              MetricName=DeployFailure,Dimensions=[{Name=Workflow,Value=deploy-ecs}],Value=1,Unit=Count
