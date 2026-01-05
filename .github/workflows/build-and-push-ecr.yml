@@ -20,6 +20,8 @@ permissions:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    env:
+      CLOUDWATCH_NAMESPACE: HomeTask/CICD
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -95,4 +97,20 @@ jobs:
             ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_WORKER_REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Publish build success metric
+        if: success()
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "$CLOUDWATCH_NAMESPACE" \
+            --metric-data \
+              MetricName=BuildSuccess,Dimensions=Workflow=build-and-push-ecr,Status=success,Value=1,Unit=Count
+
+      - name: Publish build failure metric
+        if: failure()
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "$CLOUDWATCH_NAMESPACE" \
+            --metric-data \
+              MetricName=BuildFailure,Dimensions=Workflow=build-and-push-ecr,Status=failure,Value=1,Unit=Count
 

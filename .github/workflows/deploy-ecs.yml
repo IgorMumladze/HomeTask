@@ -48,6 +48,8 @@ jobs:
   deploy:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
+    env:
+      CLOUDWATCH_NAMESPACE: HomeTask/CICD
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -171,3 +173,19 @@ jobs:
             --cluster "${CLUSTER_NAME}" \
             --services "${API_SERVICE_NAME}" "${WORKER_SERVICE_NAME}"
           exit 1  # fail the job to signal rollback happened
+
+      - name: Publish deploy success metric
+        if: success()
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "$CLOUDWATCH_NAMESPACE" \
+            --metric-data \
+              MetricName=DeploySuccess,Dimensions=Workflow=deploy-ecs,Status=success,Value=1,Unit=Count
+
+      - name: Publish deploy failure metric
+        if: failure()
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "$CLOUDWATCH_NAMESPACE" \
+            --metric-data \
+              MetricName=DeployFailure,Dimensions=Workflow=deploy-ecs,Status=failure,Value=1,Unit=Count
